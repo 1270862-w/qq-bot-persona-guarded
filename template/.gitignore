@@ -1,0 +1,26 @@
+# 这是空白模板：config.json 与 persona.md 是起始值，必须随模板一起分发
+!config.json
+!persona.md
+
+# 运行时数据
+memory/
+logs/
+blocked-images/
+state.json
+queue.jsonl
+PAUSED
+*.log
+
+# 真实部署时你自己的配置（覆盖模板后请忽略）
+.env
+
+# 依赖与产物
+node_modules/
+coverage/
+coverage-summary.json
+dist/
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
