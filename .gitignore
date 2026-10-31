@@ -1,0 +1,35 @@
+# 运行时数据，绝对不要提交
+memory/
+logs/
+blocked-images/
+state.json
+queue.jsonl
+PAUSED
+*.log
+
+# 个人配置（仓库里只放 example）
+config.json
+persona.md
+.env
+*.credentials.yaml
+
+# 部署脚本与内部文档（与使用者环境绑定，不进公开仓库）
+service.ps1
+_svc-*.bat
+接管声明.md
+开源发布说明.md
+AI-OPERATOR.txt
+AI-强制执行.txt
+验收报告-*.txt
+
+# 依赖与产物
+node_modules/
+coverage/
+coverage-summary.json
+dist/
+*.part
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store

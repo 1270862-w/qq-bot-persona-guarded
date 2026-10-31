@@ -1,0 +1,7 @@
+# 由 install-dsh.mjs 生成：把本插件 insert 进 dsh 的插件树
+- insert:
+    - id: qq-bot
+      name: dsh-qq-bot
+      config:
+        configFile: "/sdcard/Download/qq-agent-pc/config.json"
+        autoStart: true

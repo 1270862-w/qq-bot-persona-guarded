@@ -1,0 +1,303 @@
+{
+  "onebot": {
+    "wsUrl": "ws://127.0.0.1:3001",
+    "httpUrl": "http://127.0.0.1:3000",
+    "accessToken": ""
+  },
+  "llm": {
+    "provider": "deepseek",
+    "baseUrl": "https://api.deepseek.com",
+    "apiKey": "",
+    "model": "deepseek-flash",
+    "temperature": 0.9,
+    "maxTokens": 420,
+    "vision": true,
+    "extraBody": {
+      "thinking": {
+        "type": "disabled"
+      }
+    },
+    "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "search": {
+      "enabled": true,
+      "maxRounds": 2,
+      "maxSearches": 1,
+      "count": 5,
+      "needContent": false,
+      "charLimit": 2600
+    },
+    "imageTimeoutMs": 10000
+  },
+  "bot": {
+    "nick": "助手",
+    "aliases": [],
+    "defaultPersonaId": "whalegirl"
+  },
+  "personaFile": "./persona.md",
+  "mode": "dry",
+  "groups": [],
+  "rules": {
+    "minIntervalMs": 5000,
+    "perGroupCooldownMs": 15000,
+    "maxPerHour": 20,
+    "dailyCap": 150,
+    "quietHours": [
+      "00:00",
+      "07:30"
+    ],
+    "maxReplyChars": 220,
+    "replyWithAt": true
+  },
+  "proactive": {
+    "enabled": true,
+    "probability": 0.35,
+    "keywords": [
+      "有人吗",
+      "在干嘛",
+      "好无聊"
+    ],
+    "maxPerHour": 5
+  },
+  "awareness": {
+    "_说明": "话题嗅觉：①冷场时主动开话题 ②别人聊天时伺机插话",
+    "enabled": true,
+    "windowMinutes": 60,
+    "revive": {
+      "enabled": true,
+      "silenceMinutes": 25,
+      "minRecentMessages": 8,
+      "cooldownMinutes": 120,
+      "maxPerDay": 2
+    },
+    "join": {
+      "enabled": true,
+      "requireConversation": true,
+      "probability": 0.25,
+      "minSilenceSinceBot": 10,
+      "cooldownMinutes": 15,
+      "maxPerHour": 3,
+      "maxPerDay": 10
+    },
+    "activeMinutes": 5
+  },
+  "history": {
+    "size": 16
+  },
+  "safety": {
+    "blockedWords": [
+      "傻逼",
+      "去死",
+      "滚开"
+    ]
+  },
+  "autoAcceptNewGroups": true,
+  "blockedGroups": [],
+  "groupDefaults": {
+    "proactive": false
+  },
+  "server": {
+    "enable": false,
+    "host": "127.0.0.1",
+    "port": 8123,
+    "token": ""
+  },
+  "easter": {
+    "enabled": true,
+    "durationMs": 1800000,
+    "returnLine": [
+      "诶？我刚才是不是不在状态……算了。总之我在啦，有事说事。",
+      "唔……刚走神了。刚才谁在叫我？",
+      "啊，我回来了。有什么热闹可以看吗？"
+    ],
+    "cooldownMs": 60000,
+    "resetCooldownMs": 10000,
+    "maxPerHour": 6
+  },
+  "scope": {
+    "enabled": true,
+    "keywords": [
+      "写代码",
+      "写个脚本",
+      "写脚本",
+      "编程",
+      "程序",
+      "爬虫",
+      "接口",
+      "API",
+      "部署",
+      "调试",
+      "报错",
+      "bug",
+      "代码",
+      "插件",
+      "小程序",
+      "数据库",
+      "算法",
+      "架构",
+      "重构",
+      "编译",
+      "服务器",
+      "docker",
+      "sql",
+      "python",
+      "javascript",
+      "java",
+      "html",
+      "css",
+      "正则",
+      "装环境",
+      "环境配置",
+      "帮我实现",
+      "开发",
+      "技术方案"
+    ],
+    "refusals": {
+      "whalegirl": [
+        "啊这个我真不会……我只会聊天和看图，代码那玩意儿看着就头大，你找工程师去吧，我先去扒口饭。",
+        "写代码？我连自己的碗都洗不干净……这活儿真不是我能干的，找专业的吧。",
+        "唔，这个超出我的范围了。我只会唠嗑和看图——要不你先说说想做成啥样，我帮你想想还能找谁？"
+      ],
+      "changjiang": [
+        "诶？写代码这种事不是长征酱的工作范围呀！我的职责是陪大家聊天、帮大家看图的哦～技术上的事要拜托专业的工程师才行！",
+        "这个我真的帮不上呀——我是负责让大家笑的那种角色，不是修机器的。技术上的活儿，交给懂行的人吧！",
+        "不好意思哦，这个不在我的职责里。我能做的是听你说、陪你聊、帮你看图，代码这关得请工程师同志上啦！"
+      ],
+      "loji": [
+        "// 代码生成不在本终端授权范围内。该请求已被丢弃。若需开发支持，请接入工程系统。",
+        "// 请求类型：开发。权限：无。驳回。可执行项：闲聊、图像解析。",
+        "// 该能力未装载。系统不提供开发支持。若强行请求，建议更换终端。"
+      ]
+    },
+    "requestMarkers": [
+      "帮我",
+      "帮忙",
+      "给我",
+      "能不能",
+      "可不可以",
+      "能帮",
+      "可以帮",
+      "求你",
+      "求教",
+      "怎么",
+      "如何",
+      "写个",
+      "写一个",
+      "做一个",
+      "做个",
+      "搞个",
+      "弄个",
+      "实现",
+      "教教",
+      "教我",
+      "有没有办法",
+      "应该怎么",
+      "哪里出错",
+      "为什么会",
+      "怎么办",
+      "报错怎么",
+      "优化一下",
+      "改一下",
+      "搭建",
+      "配置一下"
+    ],
+    "ventMarkers": [
+      "又崩了",
+      "崩了",
+      "好难",
+      "太难",
+      "好烦",
+      "烦死",
+      "气死",
+      "吐槽",
+      "唉",
+      "笑死",
+      "牛啊",
+      "太强",
+      "卧槽",
+      "离谱",
+      "离谱了",
+      "服了",
+      "真香",
+      "大佬",
+      "救命啊",
+      "累死",
+      "头大"
+    ],
+    "refusalMode": "hybrid",
+    "fallback": "抱歉，我做不到。"
+  },
+  "politics": {
+    "_说明": "这里只放少量示例词。完整词表请自行维护，不建议公开提交。",
+    "enabled": true,
+    "keywords": [
+      "政治",
+      "主席",
+      "总统",
+      "选举",
+      "文革",
+      "台湾独立",
+      "领导人",
+      "政府",
+      "战争",
+      "上台",
+      "politics",
+      "zhengzhi"
+    ],
+    "refusals": {
+      "whalegirl": [
+        "这个我可不敢聊，说错了连饭碗都保不住……换个话题吧。",
+        "诶、这话题太沉了，我这鱼脑子接不住，咱聊点轻松的？",
+        "啊这个跳过跳过，我怕麻烦，你先说点别的吧。"
+      ],
+      "changjiang": [
+        "这个话题长征酱不接哦，咱们聊点开心的好不好？",
+        "诶，这个不在我的范围里呀。要不我们说说明天的安排？",
+        "这个我不好接呢，换个别的好玩的吧！"
+      ],
+      "loji": [
+        "// 该话题不在可处理范围内。已忽略。",
+        "// 拒绝。议题类型：政治。转移话题，或终止对话。",
+        "// 非授权议题。不评估、不表态。下一项。"
+      ]
+    }
+  },
+  "schedule": {
+    "enabled": true,
+    "sleepAt": "00:00",
+    "wakeAt": "07:30",
+    "lines": {
+      "whalegirl": {
+        "sleep": "困死了……我先睡了啊，明天见。都别熬夜，熬夜掉头发。",
+        "wake": "醒了醒了……早，让我先缓两分钟，饭好了叫我。"
+      },
+      "changjiang": {
+        "sleep": "各位，今天也辛苦啦！长征酱要下线休息咯，晚安，明天继续一起加油呀！",
+        "wake": "早上好呀各位！长征酱已经充好电了，今天也是元气满满的一天哦！"
+      },
+      "loji": {
+        "sleep": "// 本机进入低功耗维护模式。07:30 恢复受理。",
+        "wake": "// 维护完成。系统恢复受理。今日任务队列：清空。"
+      }
+    }
+  },
+  "style": {
+    "enabled": true,
+    "sentences": "2~4",
+    "minChars": 60,
+    "maxChars": 160
+  },
+  "memory": {
+    "enabled": true,
+    "autoExtract": true,
+    "everyMessages": 40,
+    "maxFacts": 120,
+    "maxChars": 1200,
+    "recallK": 10,
+    "aliases": {
+      "双排": "开黑",
+      "上分": "开黑",
+      "约饭": "吃饭"
+    }
+  },
+  "_说明": "复制成 config.json 后按注释改。不要提交 config.json。"
+}

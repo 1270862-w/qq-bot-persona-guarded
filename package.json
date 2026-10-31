@@ -1,0 +1,48 @@
+{
+  "name": "dsh-qq-bot",
+  "version": "2.0.0",
+  "description": "QQ 群聊机器人：OneBot v11 + 大模型，只聊天识图",
+  "type": "module",
+  "main": "./plugin.js",
+  "exports": {
+    ".": "./plugin.js"
+  },
+  "scripts": {
+    "server": "node server.js",
+    "start": "node bot.js",
+    "check": "node bot.js --check",
+    "mock": "node mock-onebot.js",
+    "install-dsh": "node install-dsh.mjs",
+    "test": "node test-all.js",
+    "test:hard": "node test-hard.js",
+    "test:monotony": "node test-monotony.js",
+    "test:api": "node test-all.js --with-api",
+    "test:mem": "node test-memory-quality.js",
+    "selftest": "node bot.js --selftest"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "*.js",
+    "*.mjs",
+    "*.md",
+    "*.json",
+    "*.yml",
+    "*.sh",
+    "*.bat"
+  ],
+  "keywords": [
+    "qq",
+    "onebot",
+    "chatbot",
+    "llm",
+    "deepseek"
+  ]
+}
