@@ -1,0 +1,244 @@
+{
+  "onebot": {
+    "wsUrl": "ws://127.0.0.1:3001",
+    "httpUrl": "http://127.0.0.1:3000",
+    "accessToken": ""
+  },
+  "llm": {
+    "provider": "mock",
+    "baseUrl": "https://api.deepseek.com",
+    "apiKey": "",
+    "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "model": "deepseek-flash",
+    "temperature": 0.9,
+    "maxTokens": 420,
+    "vision": true,
+    "extraBody": {
+      "thinking": {
+        "type": "disabled"
+      }
+    },
+    "search": {
+      "enabled": true,
+      "maxRounds": 2,
+      "maxSearches": 1,
+      "count": 5,
+      "needContent": false,
+      "charLimit": 2600
+    },
+    "imageTimeoutMs": 10000
+  },
+  "bot": {
+    "nick": "助手",
+    "aliases": [
+      "小助手"
+    ],
+    "defaultPersonaId": "default"
+  },
+  "personaFile": "./persona.md",
+  "mode": "auto",
+  "groups": [],
+  "autoAcceptNewGroups": true,
+  "blockedGroups": [],
+  "groupDefaults": {
+    "proactive": false
+  },
+  "rules": {
+    "minIntervalMs": 0,
+    "perGroupCooldownMs": 0,
+    "maxPerHour": 999,
+    "dailyCap": 999,
+    "quietHours": [],
+    "maxReplyChars": 220,
+    "replyWithAt": true
+  },
+  "proactive": {
+    "enabled": true,
+    "keywords": [
+      "好无聊",
+      "有人吗"
+    ],
+    "maxPerHour": 3
+  },
+  "awareness": {
+    "_说明": "话题嗅觉：①冷场时主动开话题 ②别人聊天时伺机插话",
+    "enabled": true,
+    "windowMinutes": 60,
+    "activeMinutes": 5,
+    "revive": {
+      "enabled": true,
+      "silenceMinutes": 25,
+      "minRecentMessages": 8,
+      "cooldownMinutes": 120,
+      "maxPerDay": 2
+    },
+    "join": {
+      "enabled": true,
+      "requireConversation": true,
+      "probability": 0.25,
+      "minSilenceSinceBot": 10,
+      "cooldownMinutes": 15,
+      "maxPerHour": 3,
+      "maxPerDay": 10
+    }
+  },
+  "history": {
+    "size": 16
+  },
+  "safety": {
+    "blockedWords": [
+      "去死",
+      "傻逼"
+    ]
+  },
+  "scope": {
+    "enabled": true,
+    "keywords": [
+      "代码",
+      "脚本",
+      "爬虫",
+      "接口",
+      "部署",
+      "调试",
+      "报错",
+      "数据库"
+    ],
+    "requestMarkers": [
+      "帮我",
+      "能不能",
+      "怎么",
+      "写个",
+      "做个",
+      "实现"
+    ],
+    "ventMarkers": [
+      "又崩了",
+      "好烦",
+      "累死",
+      "气死"
+    ],
+    "refusalMode": "hybrid",
+    "fallback": "抱歉，我做不到。"
+  },
+  "politics": {
+    "_说明": "仅示例词。完整词表请自行维护，不建议公开提交。",
+    "enabled": true,
+    "keywords": [
+      "政治",
+      "主席",
+      "总统",
+      "选举",
+      "文革",
+      "台湾独立",
+      "领导人",
+      "政府",
+      "战争",
+      "上台",
+      "politics",
+      "zhengzhi"
+    ],
+    "refusal": [
+      "这个话题我不聊哦，换个别的吧？",
+      "这个我这边接不了，咱们说点别的吧。",
+      "我不方便聊这个，聊点轻松的好不好？"
+    ],
+    "sealed": true
+  },
+  "easter": {
+    "enabled": true,
+    "durationMs": 3600000,
+    "returnLine": [
+      "哦，我回来了。"
+    ],
+    "cooldownMs": 60000,
+    "resetCooldownMs": 10000,
+    "maxPerHour": 3
+  },
+  "schedule": {
+    "enabled": true,
+    "sleepAt": "23:59",
+    "wakeAt": "00:00",
+    "lines": {
+      "default": {
+        "sleep": "睡了。",
+        "wake": "醒了。"
+      },
+      "alt": {
+        "sleep": "关机。",
+        "wake": "开机。"
+      }
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "autoExtract": false,
+    "everyMessages": 40,
+    "maxFacts": 120,
+    "maxChars": 1200,
+    "recallK": 10,
+    "aliases": {
+      "双排": "开黑",
+      "上分": "开黑",
+      "约饭": "吃饭"
+    },
+    "instance": "template"
+  },
+  "style": {
+    "enabled": true,
+    "sentences": "2~3",
+    "minChars": 40,
+    "maxChars": 140
+  },
+  "server": {
+    "enable": true,
+    "host": "127.0.0.1",
+    "port": 8123,
+    "token": ""
+  },
+  "intent": {
+    "enabled": true,
+    "threshold": 10,
+    "_说明": "语义触发阈值：分数≥阈值就回；人格文件里的 replyRate 优先",
+    "imageCooldownMs": 20000,
+    "imageDedupMs": 90000,
+    "batchSize": 20
+  },
+  "templog": {
+    "size": 20,
+    "maxAgeMinutes": 10
+  },
+  "images": {
+    "blockAfter": 3,
+    "_说明": "同一张图出现 N 次后拉黑，之后不再回"
+  },
+  "search": {
+    "learn": {
+      "enabled": true,
+      "maxPerHour": 2,
+      "maxQueries": 3,
+      "personaTopics": [
+        "鲸",
+        "鱼",
+        "偶像",
+        "统辖"
+      ]
+    }
+  },
+  "plugins": {
+    "enabled": [],
+    "search-learn": {
+      "trustedDomains": [
+        "gov.cn",
+        "edu.cn",
+        "xinhuanet.com",
+        "people.com.cn",
+        "cctv.com",
+        "chinadaily.com.cn",
+        "cnki.net",
+        "cas.cn",
+        "cssn.cn",
+        "stats.gov.cn"
+      ]
+    }
+  }
+}
