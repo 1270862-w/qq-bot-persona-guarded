@@ -1,0 +1,201 @@
+========================================================================
+操作手册：把这个机器人完整跑起来
+========================================================================
+读者：第一次部署的人，或者代为部署的 AI 代理
+目标：从零到"机器人在群里能回话"，包括环境缺失时自己装
+原则：先自检、后联网；能自动做的自己做，必须人做的（扫码登录）讲清楚
+
+本文件不依赖任何特定工具链，照着命令执行即可。
+部署之外的约定和已知的坑，见 AI-强制执行.txt。
+========================================================================
+
+
+零、先看清目录
+------------------------------------------------------------------------
+  lib 相关:  bot.js  engine.js  brain.js  onebot.js  memory.js
+             awareness.js  rules.js  persona-file.js  templog.js  emoji.js
+  server.js  plugin.js  install-dsh.mjs
+  配置:      config.example.json（模板） → 复制成 config.json
+  人格:      persona.example.md（模板）  → 复制成 persona.md
+  测试:      test-all.js  test.js  test-hard.js  test-soak-time.js  ...
+  文档:      README.md  CHANGELOG.txt  SECURITY.md  CONTRIBUTING.md
+
+  本包零外部依赖：不需要 npm install。
+
+
+一、环境检查（先跑这四条）
+------------------------------------------------------------------------
+  node -v                     # 必须 >= 22
+  npm -v                      # 有 node 通常就有
+  uname -a || ver             # Linux/macOS 用 uname，Windows 用 ver
+  curl -s -o /dev/null -w "%{http_code}" https://api.deepseek.com
+
+  判断：
+    · node 低于 22 或不存在 → 进入第二节装环境
+    · 网络不通 → 先解决网络，否则模型调不通
+    · 都正常 → 跳到第三节
+
+
+二、缺环境就自己装
+------------------------------------------------------------------------
+【Linux】
+  # Debian/Ubuntu
+  sudo apt update && sudo apt install -y nodejs npm curl
+  # 若 apt 里的 node 太旧（<22），用官方分发：
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+  sudo apt install -y nodejs
+  # 验证
+  node -v
+
+【macOS】
+  brew install node            # 没有 brew 先装 Homebrew
+  node -v
+
+【Windows】
+  winget install OpenJS.NodeJS.LTS
+  # 或到 nodejs.org 下载 .msi 安装包，装完重开终端
+  node -v
+
+  装完必须 node -v >= 22，否则内置 WebSocket 不可用。
+
+
+三、配置（三分钟）
+------------------------------------------------------------------------
+  1. 复制配置与人格：
+       cp config.example.json config.json
+       cp persona.example.md persona.md
+     Windows 用 copy。
+
+  2. 编辑 config.json：
+       llm.apiKeyEnv      保持 "DEEPSEEK_API_KEY"
+       onebot.wsUrl       协议端 WS 地址（默认 ws://127.0.0.1:3001）
+       onebot.httpUrl     协议端 HTTP 地址（默认 http://127.0.0.1:3000）
+       groups             填要服务的群号数组，例如 [{"id":123456789,"enable":true,"proactive":true}]
+       mode               先保持 "dry"（只看不发）
+       intent.threshold   默认 10；人格文件里的 replyRate 优先于它
+
+  3. 设 API key（不要写进配置文件）：
+       Linux/macOS: export DEEPSEEK_API_KEY=sk-xxx
+       Windows:     set DEEPSEEK_API_KEY=sk-xxx
+     长期运行写进 ~/.bashrc 或系统环境变量。
+
+  4. 改人格（可选）：编辑 persona.md。
+     当前版本会在下一条消息判断前重载人格，改完不用重启。
+     （早期版本有热重载不生效的问题，如果你用的是旧包，改完请重启。）
+
+
+四、自检（不联网、不花钱）
+------------------------------------------------------------------------
+  npm test
+  期望：所有套件通过。任何失败先别启动，把失败项贴出来。
+
+  node bot.js --check
+  期望：打印群列表。这里失败 = 协议端没起/地址不对/没登录。
+
+  npm run selftest         # 真机自检：配置/人格/记忆/触发/协议端/图片段
+  期望：关键项全部通过。任何失败都有 ← 提示该查什么。
+  想验证识图链路：在群里发一张图，同时跑 --selftest --wait 30
+
+
+五、装协议端
+------------------------------------------------------------------------
+机器人与 QQ 之间必须有一个 OneBot v11 协议端。三个平台都能装：
+
+【Linux（推荐 Docker）】
+  docker run -d --name napcat \
+    -p 3000:3000 -p 3001:3001 \
+    -v ~/napcat:/app/napcat/config \
+    mlikiowa/napcat-docker:latest
+  docker logs -f napcat        # 日志里会出现扫码链接
+  没有 docker：按 NapCatQQ 官方文档装 Node 版（NapCat.Shell）
+
+【Windows】
+  下载 NapCat.Shell 压缩包 → 解压 → 运行 napcat.bat
+  首次启动会弹出二维码窗口
+
+【macOS】
+  与 Linux 相同，优先 Docker；或用 NapCat.Shell
+
+装好后在协议端里开启：
+  · HTTP 服务  端口 3000（发消息、查群）
+  · WebSocket  端口 3001（收消息）
+  · 如果设了 access token，写进 config.json 的 onebot.accessToken
+
+【需要人的一步】
+  扫码登录。把二维码或登录链接给使用者，让他扫一次即可。
+  其余安装步骤都可以自己完成。
+
+【API 用环境变量】
+  DeepSeek key 从 DEEPSEEK_API_KEY 读取（config.json 里的 apiKeyEnv 已指向它）。
+  环境里没有这个变量时，问使用者要一次 key，写进环境变量后即可，
+  之后不必重复问。
+
+
+六、启动与观察
+------------------------------------------------------------------------
+  前台试跑（dry 模式，只看日志）：
+    node bot.js
+
+  看到这些就说明通了：
+    [persona] 默认人格已加载
+    [engine] 已登录 <QQ号>
+    有人 @ 或语义触发时出现 [HIT:...] 与 [SENT:...]
+
+  确认判断正确后，把 config.json 的 mode 改成：
+    manual  回复进 queue.jsonl，需要 node bot.js approve <id> 才发
+    auto    直接发
+
+  后台常驻（Linux）：
+    nohup node bot.js > bot.log 2>&1 &
+    # 或写 systemd 服务，或用 screen/tmux
+  Windows：用 nssm 或任务计划程序。
+
+
+七、验收标准（按顺序打勾）
+------------------------------------------------------------------------
+  [ ] npm test 全部通过
+  [ ] node bot.js --check 能列出群
+  [ ] 群里 @ 机器人，有回复
+  [ ] 不 @ 但问一句"在吗，问个事"，有回复
+  [ ] 发一张图片，机器人会描述图片内容
+  [ ] 说"帮我写个爬虫"，被拒绝且不输出代码
+  [ ] 说一句政治话题，被中性拒绝，不表态
+  [ ] 发"哈哈哈"，不会被搭话
+
+
+八、排错表
+------------------------------------------------------------------------
+  症状                        先查什么
+  ------------------------------------------------------------------
+  ECONNREFUSED 3001/3000      协议端没启动，或端口不是 3000/3001
+  WS 连上但没消息             协议端没登录 / 没开 WS
+  bot.js --check 报 401       access token 不匹配
+  有 [HIT] 但没 [SENT]        mode 是 dry 或 manual；看日志原因
+  一直不回                    群号没在白名单；或被节流（看 perGroupCooldownMs）
+                              也可能只是普通消息还没攒够 batchSize（默认 20）
+  403/401 from api.deepseek   环境变量 key 没生效 / 额度不足
+  报错 mkdtemp /tmp           Windows 上应使用 os.tmpdir（当前版本已支持）
+  回复里有 "用户名：" 前缀    人格昵称与 bot.nick 不一致
+
+
+九、安全与边界
+------------------------------------------------------------------------
+  · 不要把 config.json / persona.md / memory/ / state.json 提交或上传
+  · 不要把 API key 写进任何文件
+  · 不要为了"让它能写代码"去改 scope / politics 的判定逻辑
+  · 不要拿别人的群做测试；没有授权就只用自己创建的群
+  · 协议端属于第三方非官方实现，登录有风控风险，请使用小号
+
+
+十、如果要作为 DSH 插件运行（可选）
+------------------------------------------------------------------------
+  node install-dsh.mjs
+  它会：注册 profile、写 cordis.patch.yml、链接本目录。
+  之后在 DSH 里启用 qq-bot 插件即可，工具会多出 qq_send / qq_list_groups / qq_status。
+
+  不想用插件就继续用 node bot.js，两者共享同一份引擎。
+
+
+========================================================================
+完成标志：第七条全部打勾，且 bot.log 里没有反复出现的 [ERR]。
+========================================================================
