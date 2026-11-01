@@ -18,9 +18,9 @@ service.ps1
 _svc-*.bat
 接管声明.md
 开源发布说明.md
-AI-OPERATOR.txt
-AI-强制执行.txt
 验收报告-*.txt
+
+# 注意：AI-OPERATOR.txt / AI-强制执行.txt 是公开的部署文档，不要加到这里
 
 # 依赖与产物
 node_modules/
