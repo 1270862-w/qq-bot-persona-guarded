@@ -364,14 +364,12 @@ Copyright (C) 2026 1270862-w
 
 ### 个人收款码
 
-> 📷 **待放**｜微信赞赏码 → `docs/donate/wechat.png`
+<img width="240" src="docs/donate/wechat.png" alt="微信赞赏码">
+
+*微信赞赏码（扫码后自己填金额）*
+
 > 📷 **待放**｜支付宝收钱码 → `docs/donate/alipay.png`
 
-（生成方式与隐私说明见 [`docs/donate/`](./docs/donate/)。放好图后取消下面的注释即可显示。）
-
-<!-- 放好图后删掉注释符号
-<img width="200" src="docs/donate/wechat.png" alt="微信赞赏码">
-<img width="200" src="docs/donate/alipay.png" alt="支付宝收钱码">
--->
+（生成方式与隐私说明见 [`docs/donate/`](./docs/donate/)。）
 
 **感谢。** 不过比起打钱，我更想要的是：反馈哪个群真的用起来了、踩到什么坑、或者提一个能让人少走弯路的 issue。
