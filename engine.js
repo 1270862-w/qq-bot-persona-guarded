@@ -115,12 +115,15 @@ export class QQEngine {
     /* 临时日志：每个群最近若干条消息，用来判断"是不是在跟我说话" */
     this.tempLog = new TempLog({ size: 10, maxAgeMinutes: 10, ...(cfg.templog || {}) });
     this.intent = { enabled: true, threshold: 3, imageCooldownMs: 20000, ...(cfg.intent || {}) };
+    // 必须在 PluginHost 之前建好 brain：插件通过它拿 ctx.search / ctx.ask。
+    // 之前这一行在下方，导致传进 PluginHost 的是 undefined，插件搜索永远返回空。
+    this.brain = makeBrain(cfg.llm, this.log);
     this.plugins = new PluginHost({ dir: path.join(this.cfgDir, 'plugins'), cfg: cfg.plugins || {}, brain: this.brain,
       personaOf: (gid) => {
         const id = this._currentPersonaId(gid);
         const all = [this.personaSet && this.personaSet.default, ...((this.personaSet && this.personaSet.easter) || [])].filter(Boolean);
         const p = all.find(x => x.id === id);
-        return p ? { id: p.id, name: p.name, nick: p.nick, webSearch: p.webSearch } : null;
+        return p ? { id: p.id, name: p.name, nick: p.nick, webSearch: p.webSearch, searchKeyword: p.searchKeyword } : null;
       },
       log: (...a) => this.log(...a) });
     this._visionAt = new Map();   // 每个群上次识图时间，防止刷图就答
@@ -132,7 +135,6 @@ export class QQEngine {
     this._imgArchiveDirty = false;
     this._loadImgArchive();
 
-    this.brain = makeBrain(cfg.llm, this.log);
     this.client = new OneBotClient({ log: this.log, ...(cfg.onebot || {}) });
     this.client.on('ready', e => this.log('[engine] 已登录', e.selfId));
     this.client.on('group.message', m => {
@@ -428,7 +430,12 @@ export class QQEngine {
   decide(msg, g) {
     if (msg.isSelf) return { yes: false, why: '自己发的' };
     if (!msg.text && !msg.images.length) return { yes: false, why: '空消息' };
-    if (msg.text && msg.text.length > 800) return { yes: false, why: '太长' };
+    // 超长消息不处理：从 config.rules.maxTextChars 读，默认 800。
+    // 之前是硬编码且不写日志，表现成"它没理我"，排错只能靠猜。
+    const maxText = Number((this.rules && this.rules.maxTextChars) || 800);
+    if (msg.text && msg.text.length > maxText) {
+      return { yes: false, why: '太长（' + msg.text.length + ' > ' + maxText + '）' };
+    }
 
     const st = this.state;
     if (st.sent >= this.rules.dailyCap) return { yes: false, why: '日上限' };
@@ -542,6 +549,7 @@ export class QQEngine {
   }
 
   async handle(msg) {
+    this._maybeReloadPersonas();
     this.rollDay();
     // 静默时段：完全不受理（彩蛋触发也一并忽略）
     if (this.isSleeping()) return;
@@ -572,6 +580,9 @@ export class QQEngine {
       while (buf.length > (this.intent.batchSize || 20)) buf.shift();
       this._pending.set(msg.groupId, buf);
     }
+    // 插件要看到每一条消息：之前只在"决定不回"的分支里通知，
+    // 普通消息在攒批阶段就返回了，插件几乎拿不到样本（学习/人格补全长期不触发）。
+    if (!msg.isSelf) this.plugins.message(msg);
 
     // 同一个群同一时刻只处理一条。
     // 模型要 1~2 秒才返回，冷却时间戳是等返回后才写的；
@@ -678,8 +689,8 @@ export class QQEngine {
 
     const d = this.decide(msg, g);
     if (!d.yes) {
-      // 不说话的时候，记下来慢慢学；隔一阵自己查
-      this.plugins.message(msg);
+      // 静默丢弃也要留痕：为什么没回
+      this.log('[skip] 不回：' + (d.why || '未触发'));
       return;
     }
     this.log(`[HIT:${d.kind}] ${msg.sender}(${msg.userId}): ${msg.text.slice(0, 60)}`);
@@ -1020,12 +1031,16 @@ export class QQEngine {
     const cur = now.getHours() * 60 + now.getMinutes();
     const sleepAt = this._toMin(sch.sleepAt || '00:00');
     const wakeAt = this._toMin(sch.wakeAt || '07:30');
+    // 补发宽限：过了点还在这段时间内就补发。
+    // 原来用 cur === sleepAt 精确匹配，进程在那一分钟没运行（重启/休眠）就当天空过。
+    const GRACE = Number(sch.graceMinutes) || 30;
+    const due = (t) => cur >= t && cur < t + GRACE;
 
-    if (cur === sleepAt && !this._announced.get(day + ':sleep')) {
+    if (due(sleepAt) && !this._announced.get(day + ':sleep')) {
       this._announced.set(day + ':sleep', true);
       await this._announce('sleep');
     }
-    if (cur === wakeAt && !this._announced.get(day + ':wake')) {
+    if (due(wakeAt) && !this._announced.get(day + ':wake')) {
       this._announced.set(day + ':wake', true);
       await this._announce('wake');
     }

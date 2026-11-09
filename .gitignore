@@ -33,3 +33,6 @@ dist/
 .vscode/
 .idea/
 .DS_Store
+
+# 推 workflow 文件需要额外的 workflow 权限，暂不跟踪（文件保留在本地）
+.github/workflows/

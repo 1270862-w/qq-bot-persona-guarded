@@ -83,7 +83,7 @@ export function parsePersonaText(text) {
 
     if (mode === 'meta') {
       const m = /^([\w-]+)\s*[:：]\s*(.*)$/.exec(line.trim());
-      if (m) cur.meta[m[1].toLowerCase()] = m[2].trim();
+      if (m) cur.meta[m[1].toLowerCase()] = m[2].replace(/\s+#.*$/, '').trim();
     } else if (mode === 'body') {
       cur.body.push(line);
     } else {
@@ -113,6 +113,9 @@ export function parsePersonaText(text) {
       requirePattern: m.requirepattern || m.require_pattern || '',
       requireHint: m.requirehint || m.require_hint || '',
       requireFallback: m.requirefallback || m.require_fallback || '',
+      // 插件用：webSearch=yes 表示首次不搜索人格资料；searchKeyword 是给搜索用的查询词
+      webSearch: (m.websearch || '').toLowerCase(),
+      searchKeyword: m.searchkeyword || m.search_keyword || '',
       text: s.body.join('\n').trim(),
       sleep: s.tail.sleep || '',
       wake: s.tail.wake || ''
