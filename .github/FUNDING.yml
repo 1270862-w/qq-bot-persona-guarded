@@ -1,0 +1,7 @@
+# 赞助入口（GitHub 会在仓库页右上角显示 Sponsor 按钮）
+#
+# custom: 任意赞助页链接，最多 4 个。
+# github: 需要先开通 GitHub Sponsors（要 Stripe 账户，中国大陆个人无法开通），
+#         所以这里用爱发电代替。
+
+custom: ["https://afdian.com/a/1270862lt"]
