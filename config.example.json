@@ -299,5 +299,19 @@
       "约饭": "吃饭"
     }
   },
-  "_说明": "复制成 config.json 后按注释改。不要提交 config.json。"
+  "_说明": "复制成 config.json 后按注释改。不要提交 config.json。",
+  "send": {
+    "split": {
+      "enabled": true,
+      "maxParts": 3,
+      "minChunk": 6,
+      "delayMs": [
+        600,
+        1800
+      ]
+    }
+  },
+  "plugins": {
+    "enabled": []
+  }
 }

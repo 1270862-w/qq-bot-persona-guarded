@@ -32,7 +32,11 @@ class FakeDate extends RealDate {
 globalThis.Date = FakeDate;
 
 const HOUR = 3600000, DAY = 24 * HOUR;
-const START = Date.UTC(2026, 0, 5, 0, 0, 0);   // 2026-01-05 00:00 UTC
+// 基准必须是「本地」零点：_tick 用 now.getHours() 判断作息（本地时间），
+// 若用 Date.UTC 当基准，在 UTC+8 等时区会整体偏移，导致
+//   · 22:00 的消息落进静音时段被过滤（记忆不积累）
+//   · 23:59 变成次日 07:59，只触发 wake、sleep 永不触发
+const START = new Date(2026, 0, 5, 0, 0, 0).getTime();   // 2026-01-05 00:00 本地
 const DAYS = 90;
 
 let pass = 0, fail = 0;

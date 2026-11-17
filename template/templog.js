@@ -27,6 +27,7 @@ export class TempLog {
     const list = this._list(gid);
     list.push({
       sender: String(entry.sender || ''),
+      userId: String(entry.userId || ''),
       text: String(entry.text || ''),
       hasImage: !!entry.hasImage,
       isSelf: !!entry.isSelf,

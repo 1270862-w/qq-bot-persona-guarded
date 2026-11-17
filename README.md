@@ -8,6 +8,8 @@
 [![tests](https://img.shields.io/badge/%E7%A6%BB%E7%BA%BF%E6%96%AD%E8%A8%80-426-success)](https://github.com/1270862-w/qq-bot-persona-guarded/blob/main/test.js)
 [![real-machine](https://img.shields.io/badge/%E7%9C%9F%E6%9C%BA%E8%BF%90%E8%A1%8C-8%20%E5%A4%A9-orange)](#真机运行结果)
 
+**当前版本：2.1.0**（人格打分表 / 时区作息 / 动态早晚安 / 逐条发送 / 双实例联动）
+
 零外部依赖 ｜ GPL-3.0 ｜ 426 项离线断言 ｜ 8 天真机运行 ｜ 10 个真实群
 
 ---

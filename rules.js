@@ -193,6 +193,21 @@ export function intentScore(cfg, text, ctx = {}) {
   if (/(哈哈|233|笑死|同意|收到|好的|嗯|哦|卧槽)/.test(t) && t.length <= 6) s -= 3;  // 纯附和
   if (t.length < 2 && !ctx.hasImage) s -= 1;   // 空文本扣分，但图片本身就是内容
 
-  const th = (ctx.threshold != null ? ctx.threshold : ((cfg && cfg.intent && cfg.intent.threshold) || 3));
+  // 人格自带的"口味"打分表（可选）：topic 加分 / penalty 减分 / 结构分覆盖
+  const taste = ctx.taste || {};
+  if (taste.topic) for (const [w, v] of Object.entries(taste.topic)) { if (w && t.includes(w)) s += Number(v) || 0; }
+  if (taste.penalty) for (const [w, v] of Object.entries(taste.penalty)) { if (w && t.includes(w)) s += Number(v) || 0; }
+  if (taste.structural) {
+    const st = taste.structural;
+    if (ctx.hasImage && st.image != null) s += Number(st.image) - 1;
+    if (ctx.afterBot && st.afterBot != null) s += Number(st.afterBot) - 1;
+    if (ctx.named && st.named != null) s += Number(st.named) - 8;
+  }
+
+  // 阈值优先级：人格打分表里的 threshold > 调用方传入（人格 replyRate）> config
+  // 上游原写法是 ctx.threshold 优先，导致 taste.threshold 永远不生效（引擎总会传 replyRate）。
+  const th = (taste.threshold != null
+    ? Number(taste.threshold)
+    : (ctx.threshold != null ? ctx.threshold : ((cfg && cfg.intent && cfg.intent.threshold) || 3)));
   return { score: s, threshold: th, hit: s >= th };
 }

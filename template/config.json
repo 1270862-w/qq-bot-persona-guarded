@@ -215,19 +215,16 @@
     }
   },
   "plugins": {
-    "enabled": [],
-    "search-learn": {
-      "trustedDomains": [
-        "gov.cn",
-        "edu.cn",
-        "xinhuanet.com",
-        "people.com.cn",
-        "cctv.com",
-        "chinadaily.com.cn",
-        "cnki.net",
-        "cas.cn",
-        "cssn.cn",
-        "stats.gov.cn"
+    "enabled": []
+  },
+  "send": {
+    "split": {
+      "enabled": true,
+      "maxParts": 3,
+      "minChunk": 6,
+      "delayMs": [
+        600,
+        1800
       ]
     }
   }

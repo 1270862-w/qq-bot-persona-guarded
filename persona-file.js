@@ -39,6 +39,19 @@
 
 const MAX_EASTER = 4;
 
+/** 可选打分表：人格正文里的 "## 打分" + ```json 块，没有就返回 null */
+function parseTaste(text) {
+  const s = String(text || '');
+  const i = s.search(/^#{2,}\s*打分/m);
+  if (i < 0) return null;
+  const m = s.slice(i).match(/```(?:json)?\s*\n([\s\S]*?)```/);
+  if (!m) return null;
+  try {
+    const o = JSON.parse(m[1]);
+    return (o && typeof o === 'object' && !Array.isArray(o)) ? o : null;
+  } catch (e) { return null; }
+}
+
 const splitList = (v) => String(v || '')
   .split(/[,，、]/)
   .map(x => x.trim())
@@ -116,6 +129,8 @@ export function parsePersonaText(text) {
       // 插件用：webSearch=yes 表示首次不搜索人格资料；searchKeyword 是给搜索用的查询词
       webSearch: (m.websearch || '').toLowerCase(),
       searchKeyword: m.searchkeyword || m.search_keyword || '',
+      // 人格自带的"口味"打分表（可选）：正文里 "## 打分" + ```json 块，没有就是 null
+      score: parseTaste(s.body.join('\n')),
       text: s.body.join('\n').trim(),
       sleep: s.tail.sleep || '',
       wake: s.tail.wake || ''

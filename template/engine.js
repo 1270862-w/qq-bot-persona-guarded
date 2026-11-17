@@ -115,12 +115,15 @@ export class QQEngine {
     /* 临时日志：每个群最近若干条消息，用来判断"是不是在跟我说话" */
     this.tempLog = new TempLog({ size: 10, maxAgeMinutes: 10, ...(cfg.templog || {}) });
     this.intent = { enabled: true, threshold: 3, imageCooldownMs: 20000, ...(cfg.intent || {}) };
+    // 必须在 PluginHost 之前建好 brain：插件通过它拿 ctx.search / ctx.ask。
+    // 之前这一行在下方，导致传进 PluginHost 的是 undefined，插件搜索永远返回空。
+    this.brain = makeBrain(cfg.llm, this.log);
     this.plugins = new PluginHost({ dir: path.join(this.cfgDir, 'plugins'), cfg: cfg.plugins || {}, brain: this.brain,
       personaOf: (gid) => {
         const id = this._currentPersonaId(gid);
         const all = [this.personaSet && this.personaSet.default, ...((this.personaSet && this.personaSet.easter) || [])].filter(Boolean);
         const p = all.find(x => x.id === id);
-        return p ? { id: p.id, name: p.name, nick: p.nick, webSearch: p.webSearch } : null;
+        return p ? { id: p.id, name: p.name, nick: p.nick, webSearch: p.webSearch, searchKeyword: p.searchKeyword } : null;
       },
       log: (...a) => this.log(...a) });
     this._visionAt = new Map();   // 每个群上次识图时间，防止刷图就答
@@ -132,7 +135,6 @@ export class QQEngine {
     this._imgArchiveDirty = false;
     this._loadImgArchive();
 
-    this.brain = makeBrain(cfg.llm, this.log);
     this.client = new OneBotClient({ log: this.log, ...(cfg.onebot || {}) });
     this.client.on('ready', e => this.log('[engine] 已登录', e.selfId));
     this.client.on('group.message', m => {
@@ -374,6 +376,8 @@ export class QQEngine {
   }
 
   inQuietHours() {
+    // 临时解除睡眠（测试用）：rules.noSleep=true 时永久不判免打扰
+    if (this.rules && this.rules.noSleep === true) return false;
     const q = this.rules.quietHours;
     if (!q || q.length !== 2) return false;
     const d = new Date();
@@ -425,26 +429,60 @@ export class QQEngine {
     } catch (e) { /* 首次运行 / 文件损坏：当作全新开始 */ }
   }
 
-  /** 时间块：只给时段和星期，不给年份 */
-  _timeBlock() {
-    const d = new Date();
-    const wd = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
-    const h = d.getHours();
-    const seg = h < 6 ? '凌晨' : h < 11 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : h < 23 ? '晚上' : '深夜';
-    return '\n\n【现在】' + wd + '，' + seg + ' ' + h + ' 点';
-  }
-
   decide(msg, g) {
     if (msg.isSelf) return { yes: false, why: '自己发的' };
+
+    // 机器人之间的接力上限：两个机器人同群时会互相回话，
+    // 连续 N 条都出自机器人就停一次，避免无限循环和费用失控。
+    // 配置：rules.botIds（机器人 QQ 号数组）、rules.botChainMax（默认 3）
+    const botIds = ((this.rules && this.rules.botIds) || []).map(String);
+    if (botIds.length && botIds.includes(String(msg.userId))) {
+      const chainMax = Number((this.rules && this.rules.botChainMax) || 3);
+      const recent = this.tempLog.recent(msg.groupId, 8);
+      let run = 0;
+      for (let i = recent.length - 1; i >= 0; i--) {
+        const isBot = botIds.includes(String(recent[i].userId));
+        if (!isBot) break;
+        run++;
+      }
+      if (run >= chainMax) return { yes: false, why: '机器人接力上限（' + run + '）' };
+      msg._peerRun = run;          // 记下来，冷却检查之后再决定要不要接
+    }
     if (!msg.text && !msg.images.length) return { yes: false, why: '空消息' };
-    if (msg.text && msg.text.length > 800) return { yes: false, why: '太长' };
+    // 超长消息不处理：从 config.rules.maxTextChars 读，默认 800。
+    // 之前是硬编码且不写日志，表现成"它没理我"，排错只能靠猜。
+    const maxText = Number((this.rules && this.rules.maxTextChars) || 800);
+    if (msg.text && msg.text.length > maxText) {
+      return { yes: false, why: '太长（' + msg.text.length + ' > ' + maxText + '）' };
+    }
 
     const st = this.state;
     if (st.sent >= this.rules.dailyCap) return { yes: false, why: '日上限' };
     if ((st.perHour[hourKey()] || 0) >= this.rules.maxPerHour) return { yes: false, why: '小时上限' };
-    if (this.inQuietHours()) return { yes: false, why: '免打扰' };
+    if (this.inQuietHours()) {
+      // 静默期放行一次「同伴消息」：让两个机器人能互道晚安/早安，
+      // 之后彻底安静。配置 rules.peerAllowQuiet=true，每群每天只放行一次。
+      const bIds = ((this.rules && this.rules.botIds) || []).map(String);
+      if ((this.rules && this.rules.peerAllowQuiet) && bIds.includes(String(msg.userId))) {
+        const key = dayKey() + '|' + msg.groupId;
+        if (!this._quietPeerUsed) this._quietPeerUsed = new Set();
+        if (!this._quietPeerUsed.has(key)) {
+          this._quietPeerUsed.add(key);
+          return { yes: true, why: '静默期同伴放行（每天一次）', kind: 'peer' };
+        }
+      }
+      return { yes: false, why: '免打扰' };
+    }
+    // 同伴机器人发言：直接接话，不受全局间隔 / 本群冷却限制。
+    // 节奏由 persona-bridge 的 maxTurns（默认 5 轮）和 rules.botChainMax 控制，
+    // 否则刚回完一句（1 秒内）就被自己的冷却挡住，联动只走一轮。
+    if (msg._peerRun !== undefined) {
+      return { yes: true, why: '接同伴（第 ' + (msg._peerRun + 1) + ' 条）', kind: 'peer' };
+    }
+
     if (now() - (st.lastReplyAt['__global'] || 0) < this.rules.minIntervalMs) return { yes: false, why: '全局间隔' };
     if (now() - (st.lastReplyAt[msg.groupId] || 0) < this.rules.perGroupCooldownMs) return { yes: false, why: '本群冷却' };
+
 
     if (msg.atMe) return { yes: true, why: '@我(at段)', kind: 'mention' };
     // 明确 @ 了别人：这句话是跟那个人说的，不凑热闹。
@@ -458,6 +496,13 @@ export class QQEngine {
     // 有的客户端会把 @ 拍平成纯文本，所以再按昵称匹配一次
     const called = this._activeNames(msg.groupId).some(n => msg.text.includes('@' + n) || msg.text.includes(n));
     if (called) return { yes: true, why: '被叫名字', kind: 'mention' };
+
+    // 只回应呼叫（intent.onlyWhenNamed=true）：@ 或被叫名字才回，
+    // 其余一律不理——包括"直接请求"和语义打分/分批判断。
+    // 用途：第二个实例（大肥鱼）在群里只该在被点名时说话。
+    if (this.intent && this.intent.onlyWhenNamed === true) {
+      return { yes: false, why: '只回应呼叫' };
+    }
 
     // 直接请求（"我问你个事""请求你…"）：不用等分批，立刻接
     if (R.isDirectRequest(emojiToText(msg.text || ''))) {
@@ -502,6 +547,7 @@ export class QQEngine {
 
       const th = this._intentThreshold(msg.groupId);
       const r = R.intentScore(this.cfg, text, {
+        taste: this._taste(msg.groupId),
         hasImage, imageBonus, afterBot, recentQuestion, threshold: th,
         othersAt: !!msg.atOthers          // @了别人：这句话里的"你"指的是那个人
       });
@@ -554,7 +600,15 @@ export class QQEngine {
     this._maybeReloadPersonas();
     this.rollDay();
     // 静默时段：完全不受理（彩蛋触发也一并忽略）
-    if (this.isSleeping()) return;
+    if (this.isSleeping()) {
+      // 静默期也要通知插件：persona-bridge 需要看到对方的晚安/早安，
+      // 否则"静默期互道晚安"这条联动路径永远走不到。
+      if (!msg.isSelf) this.plugins.message(msg);
+      // 只有"同伴消息 + 允许静默放行"才继续；真人说话照旧静默。
+      const bIds = ((this.rules && this.rules.botIds) || []).map(String);
+      const allow = (this.rules && this.rules.peerAllowQuiet) && bIds.includes(String(msg.userId));
+      if (!allow) return;
+    }
 
     this._lastGid = msg.groupId;      // 兼容不带群号的调用（测试/外部工具）
 
@@ -572,6 +626,7 @@ export class QQEngine {
     if (this.aw && !msg.isSelf) this.aw.noteHuman(msg.groupId, msg.sender, plainText);
     // 临时日志：判断"要不要接话"的现场依据
     this.tempLog.add(msg.groupId, {
+      userId: msg.userId,
       sender: msg.sender, text: plainText,
       hasImage: !!(msg.images && msg.images.length), isSelf: msg.isSelf
     });
@@ -582,6 +637,9 @@ export class QQEngine {
       while (buf.length > (this.intent.batchSize || 20)) buf.shift();
       this._pending.set(msg.groupId, buf);
     }
+    // 插件要看到每一条消息：之前只在"决定不回"的分支里通知，
+    // 普通消息在攒批阶段就返回了，插件几乎拿不到样本（学习/人格补全长期不触发）。
+    if (!msg.isSelf) this.plugins.message(msg);
 
     // 同一个群同一时刻只处理一条。
     // 模型要 1~2 秒才返回，冷却时间戳是等返回后才写的；
@@ -662,7 +720,10 @@ export class QQEngine {
     const plainReq = emojiToText(msg.text || '');
     const namedNow = this._activeNames(msg.groupId).some(n => n && (plainReq.includes('@' + n) || plainReq.includes(n)));
     // 呼叫词不再单独触发：得带上名字（"小鲸鱼在吗"）或 @ 才算
-    const immediate = msg.atMe || namedNow || R.isDirectRequest(plainReq);
+    // 同伴机器人的发言也立刻处理：否则会被"攒批"吞掉，到不了 decide，
+    // 联动就永远只有第一轮（对方说话 → 我接不了）。
+    const isPeerMsg = ((this.rules && this.rules.botIds) || []).map(String).includes(String(msg.userId));
+    const immediate = msg.atMe || namedNow || R.isDirectRequest(plainReq) || isPeerMsg;
     if (immediate) {
       this._pending.set(msg.groupId, []);          // 被点名：抛弃当前的积压
     } else if ((this._pending.get(msg.groupId) || []).length < (this.intent.batchSize || 20)) {
@@ -673,7 +734,7 @@ export class QQEngine {
       const th = this._intentThreshold(msg.groupId);
       let best = -Infinity, bestText = '';
       for (const b of batch) {
-        const sc = R.intentScore(this.cfg, b.text, { threshold: th }).score;
+        const sc = R.intentScore(this.cfg, b.text, { threshold: th, taste: this._taste(b.groupId) }).score;
         if (sc > best) { best = sc; bestText = b.text; }
       }
       this._pending.set(msg.groupId, []);
@@ -690,11 +751,28 @@ export class QQEngine {
     if (!d.yes) {
       // 静默丢弃也要留痕：为什么没回
       this.log('[skip] 不回：' + (d.why || '未触发'));
-      // 不说话的时候，记下来慢慢学；隔一阵自己查
-      this.plugins.message(msg);
       return;
     }
     this.log(`[HIT:${d.kind}] ${msg.sender}(${msg.userId}): ${msg.text.slice(0, 60)}`);
+
+    // 联动接话的间隔：默认 5~7 秒随机（可配 rules.peerDelayMs）。
+    // 目的是让两个 AI 对话不像机器刷屏，像真的在想话。
+    if (d.kind === 'peer') {
+      // 交错节流：刚才 2 秒内我自己说过话，说明两边被同一条消息同时触发，
+      // 这轮先让给对方，避免"同一个角色连发两条"。
+      const sinceMine = now() - (this.state.lastReplyAt[msg.groupId] || 0);
+      if (sinceMine < 2000) {
+        this.log('[peer] 刚说过（' + Math.round(sinceMine) + 'ms），让给对方');
+        return;
+      }
+      const range = (this.rules && this.rules.peerDelayMs) || [5000, 7000];
+      const lo = Number(range[0]) || 0;
+      const hi = Math.max(lo, Number(range[1]) || lo);
+      const wait = lo + Math.random() * (hi - lo);
+      msg._peerBrief = true;
+      this.log('[peer] 联动延迟 ' + (wait / 1000).toFixed(1) + ' 秒');
+      await new Promise((r) => setTimeout(r, wait));
+    }
 
     let reply;
     if (this._politicsHit(msg.text)) {
@@ -705,6 +783,14 @@ export class QQEngine {
       reply = await this._refuse(msg);
     } else {
       let persona = this.activePersona(msg.groupId);
+      if (d.kind === 'peer') {
+        // 联动时的额外约束：短、少动作、叫对、会收尾
+        const cap = Number((this.rules && this.rules.peerMaxChars) || 80);
+        const call = (this.rules && this.rules.peerCall) || '对方';
+        persona += '\n\n【联动】这是你们两个 AI 在群里对话：一次最多 ' + cap + ' 字，别写成段落；'
+          + '最多每三条带一次括号动作；称呼对方用「' + call + '」，不要叫"前辈"；'
+          + '如果没有需要回应的点就简短收住，不要硬接、不要反问。';
+      }
       if (this.mem) persona += this.mem.prompt(msg.groupId, msg.text);   // 只注入本群
       if (!this.personaState(msg.groupId).activeId && pst.echo) {
         persona += '\n\n【残留记忆】' + pst.echo + '（只在这次回复里隐约透出来，别直白解释。）';
@@ -716,9 +802,9 @@ export class QQEngine {
         if (anchor) persona += '\n\n【必须保持的格式】' + anchor;
         const recentChat = this.tempLog.segment(msg.groupId, 8);
         const ctxBlock = recentChat ? '\n\n【刚才群里在聊】\n' + recentChat : '';
-        const focusBlock = (msg._focus ? '\n\n【重点】' + msg._focus : '') + this._searchNudge() + this.plugins.promptAdd(msg);
+        const focusBlock = (msg._focus ? '\n\n【重点】' + msg._focus : '') + this._searchNudge() + this._timeBlock() + this.plugins.promptAdd(msg);
         txt = await this.brain.reply({
-          persona: persona + ctxBlock + focusBlock + this._timeBlock() + this._politicsRule() + this._scopeRule() + this._styleRule(),
+          persona: persona + ctxBlock + focusBlock + this._politicsRule() + this._scopeRule() + this._styleRule(),
           history: (this.state.history.get(msg.groupId) || []).slice(-16),
           text: (msg.sender ? msg.sender + '：' : '') + (emojiToText(msg.text || '') || '[用户发来图片]'),
           images: msg.images
@@ -860,8 +946,11 @@ export class QQEngine {
 
   _toMin(s) { const [h, m] = String(s || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); }
 
-  /** 当前该不该静默（不受理任何对话） */
-  isSleeping() { return this.inQuietHours(); }
+  /** 当前该不该静默（不受理任何对话）：免打扰时段 或 人格自己的睡眠时段 */
+  isSleeping() {
+    if (this.rules && this.rules.noSleep === true) return false;
+    return this.inQuietHours() || this._sleepByTZ();
+  }
 
   _loadImgArchive() {
     try {
@@ -946,6 +1035,68 @@ export class QQEngine {
     return this.sanitize((p.requireFallback ? reply + '\n' + p.requireFallback : reply));
   }
 
+  /** 当前人格自带的口味打分表（可选），没有就返回 null */
+  _taste(gid) {
+    try {
+      const p = this.activePersona(gid);
+      return (p && p.score) || null;
+    } catch (e) { return null; }
+  }
+
+  /**
+   * 时间来源：time.json（可选）> config.rules.timezone > Asia/Shanghai。
+   * 睡眠时段同理：time.json 里没写就沿用 config.schedule 的 sleepAt/wakeAt，
+   * 保证「不建 time.json 时行为和以前完全一致」。
+   */
+  _timeCfg() {
+    if (this._timeCfgCache) return this._timeCfgCache;
+    let t = {};
+    try { t = JSON.parse(fs.readFileSync(path.join(this.cfgDir, 'time.json'), 'utf8')); } catch (e) { t = {}; }
+    const sch = (typeof this._schedule === 'function' ? this._schedule() : null) || this.cfg.schedule || {};
+    this._timeCfgCache = {
+      tz: t.timezone || (this.cfg.rules && this.cfg.rules.timezone) || 'Asia/Shanghai',
+      sleepAt: t.sleepAt || sch.sleepAt || '23:30',
+      wakeAt: t.wakeAt || sch.wakeAt || '07:00'
+    };
+    return this._timeCfgCache;
+  }
+
+  /** 按配置时区取「小时 / 分钟 / 中文星期」，不依赖宿主机时区 */
+  _nowParts() {
+    const tz = this._timeCfg().tz;
+    let hh, mm, wd;
+    try {
+      const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false });
+      const p = Object.fromEntries(fmt.formatToParts(new Date()).map((x) => [x.type, x.value]));
+      const map = { Sun: '周日', Mon: '周一', Tue: '周二', Wed: '周三', Thu: '周四', Fri: '周五', Sat: '周六' };
+      hh = Number(p.hour) % 24;
+      mm = Number(p.minute);
+      wd = map[p.weekday] || '';
+    } catch (e) {
+      // 时区名非法时退回本地时间，别让整条消息处理链炸掉
+      const d = new Date();
+      hh = d.getHours(); mm = d.getMinutes();
+      wd = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+    }
+    return { hh, mm, wd, min: hh * 60 + mm };
+  }
+
+  /** 人格自己的睡眠时段（按时区算，支持跨天，如 23:30→07:00） */
+  _sleepByTZ() {
+    const c = this._timeCfg();
+    const toMin = (s) => { const [h, m] = String(s).split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+    const cur = this._nowParts().min;
+    const a = toMin(c.sleepAt), b = toMin(c.wakeAt);
+    return a <= b ? (cur >= a && cur < b) : (cur >= a || cur < b);
+  }
+
+  /** 时间块：只给时段和星期，不给年份，避免人设穿帮（按 time.json 的时区） */
+  _timeBlock() {
+    const t = this._nowParts();
+    const seg = t.hh < 6 ? '凌晨' : t.hh < 11 ? '上午' : t.hh < 14 ? '中午' : t.hh < 18 ? '下午' : t.hh < 23 ? '晚上' : '深夜';
+    return '\n\n【现在】' + t.wd + '，' + seg + ' ' + t.hh + ' 点';
+  }
+
   /** 联网搜索的"多用"提示：需要事实/时效信息时先查再答 */
   _searchNudge() {
     const on = !this.cfg.search || this.cfg.search.enabled !== false;
@@ -992,6 +1143,51 @@ export class QQEngine {
     return [...ids].filter(id => this.groupCfg(id));
   }
 
+  /**
+   * 现场生成今天的早安/晚安台词，避免每天同一句。
+   * 失败、太长、空 → 返回空串，调用方回落人格文件里的固定台词。
+   */
+  async _genLine(kind) {
+    const sch = this._schedule();
+    if (sch.generateLines === false) return '';
+    if (!this.brain || typeof this.brain.reply !== 'function') return '';
+
+    const t = this._nowParts();
+    const tag = kind === 'sleep' ? '晚安' : '早安';
+    const seg = t.hh < 6 ? '凌晨' : t.hh < 11 ? '上午' : t.hh < 14 ? '中午' : t.hh < 18 ? '下午' : t.hh < 23 ? '晚上' : '深夜';
+    const hist = (this.state.announceHistory || {});
+    const recent = (hist[kind] || []).slice(-3);
+
+    const set = this.personaSet || {};
+    const all = [set.default, ...((set.easter) || [])].filter(Boolean);
+    const p = all.find((x) => x.id === this._currentPersonaId()) || set.default || {};
+    const persona = (p.text || '') + (p.anchor ? '\n\n【必须保持的格式】' + p.anchor : '');
+
+    // 随机换个切入角度，避免每天都从"困/饭"开头
+    const angles = kind === 'sleep'
+      ? ['今天累坏了', '刚困下来', '想起还有没做完的事', '舍不得睡', '明天有事要早起', '被窝已经暖好了']
+      : ['刚醒还迷糊', '昨晚没睡够', '惦记早饭', '梦到点什么', '今天打算做的事', '被外面的光吵醒'];
+    const angle = angles[Math.floor(Math.random() * angles.length)];
+
+    const ask = [
+      '在群里说一句' + tag + '。（现在是' + t.wd + ' ' + seg + ' ' + t.hh + ' 点）',
+      '这次的角度：' + angle + '。',
+      recent.length ? '最近说过这几句，别重复：' + recent.join(' / ') : '',
+      '要求：1~2 句，40 字以内，口语，像平时聊天；不要每句都提"困"和"吃饭"，按上面的角度展开；换着花样开头；不要解释、不要旁白、不要引号。'
+    ].filter(Boolean).join('\n');
+
+    try {
+      const out = await this.brain.reply({ persona, history: [], text: ask, images: [] });
+      let s = String(out || '').replace(/[\r\n]+/g, ' ')
+        .replace(/^["「『（(]+/, '').replace(/["」』）)]+$/, '').trim();
+      if (!s || s.length > 60) return '';
+      this.state.announceHistory = hist;
+      hist[kind] = [...(hist[kind] || []), s].slice(-5);
+      this._saveState();
+      return s;
+    } catch (e) { return ''; }
+  }
+
   _lineFor(kind) {
     const sch = this._schedule();
     const lines = sch.lines || {};
@@ -1001,7 +1197,11 @@ export class QQEngine {
   }
 
   async _announce(kind) {
-    const text = this._lineFor(kind);
+    // 先试现场生成（每天不一样），失败再用人格文件里的固定台词
+    let text = '';
+    const gen = await this._genLine(kind).catch(() => '');
+    if (gen) { text = gen; this.log('[schedule] 生成台词：' + gen.slice(0, 40)); }
+    else text = this._lineFor(kind);
     if (!text) return;
     const groups = this._announceGroups();
     const mode = this.cfg.mode || 'dry';
@@ -1023,12 +1223,16 @@ export class QQEngine {
     const cur = now.getHours() * 60 + now.getMinutes();
     const sleepAt = this._toMin(sch.sleepAt || '00:00');
     const wakeAt = this._toMin(sch.wakeAt || '07:30');
+    // 补发宽限：过了点还在这段时间内就补发。
+    // 原来用 cur === sleepAt 精确匹配，进程在那一分钟没运行（重启/休眠）就当天空过。
+    const GRACE = Number(sch.graceMinutes) || 30;
+    const due = (t) => cur >= t && cur < t + GRACE;
 
-    if (cur === sleepAt && !this._announced.get(day + ':sleep')) {
+    if (due(sleepAt) && !this._announced.get(day + ':sleep')) {
       this._announced.set(day + ':sleep', true);
       await this._announce('sleep');
     }
-    if (cur === wakeAt && !this._announced.get(day + ':wake')) {
+    if (due(wakeAt) && !this._announced.get(day + ':wake')) {
       this._announced.set(day + ':wake', true);
       await this._announce('wake');
     }
@@ -1223,6 +1427,32 @@ export class QQEngine {
    * @param {object} opts { kind, atUid, force, guardScope, sender, src }
    * @returns {Promise<object|null>} null = 没有真正发出（被丢弃/被拦）
    */
+  /**
+   * 把一段话切成 2~N 条消息，模拟真人"一句一发"。
+   * 规则：按句末标点/换行切；太短的片段并到上一条；超过 maxParts 就把尾巴合并。
+   */
+  _splitText(text, cfg = {}) {
+    const maxParts = Math.max(1, Number(cfg.maxParts) || 3);
+    const minChunk = Math.max(1, Number(cfg.minChunk) || 6);
+    const t = String(text || '').trim();
+    if (!t) return [''];
+    const raw = t.match(/[^。！？…!?~\n]+[。！？…!?~]*|\n+/g) || [t];
+    const chunks = [];
+    for (const piece of raw) {
+      const s = piece.trim();
+      if (!s) continue;
+      if (chunks.length && chunks[chunks.length - 1].length < minChunk) chunks[chunks.length - 1] += s;
+      else chunks.push(s);
+    }
+    if (chunks.length <= 1) return [t];
+    if (chunks.length > maxParts) {
+      const head = chunks.slice(0, maxParts - 1);
+      head.push(chunks.slice(maxParts - 1).join(''));
+      return head;
+    }
+    return chunks;
+  }
+
   async _emit(gid, text, opts = {}) {
     const kind = opts.kind || 'reply';
     const out = await this.plugins.transform({ gid, text, kind, meta: opts });
@@ -1261,11 +1491,31 @@ export class QQEngine {
       return { queued: true, id };
     }
 
-    let r;
+    // 逐条发送：把一段话拆成几条，像真人一句一发
+    const splitCfg = Object.assign(
+      { enabled: false, maxParts: 3, minChunk: 6, delayMs: [600, 1800] },
+      (this.cfg.send && this.cfg.send.split) || {}
+    );
+    // 公告不拆（正式语气），同伴联动也不拆（会让对方多接一轮）
+    const canSplit = splitCfg.enabled !== false && kind !== 'announce' && kind !== 'peer';
+    const parts = canSplit ? this._splitText(clean, splitCfg) : [clean];
+
+    let r = null;
     try {
-      r = opts.atUid
-        ? await this.client.sendGroupAt(gid, opts.atUid, clean)
-        : await this.client.sendGroup(gid, clean);
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (!part) continue;
+        const res = (i === 0 && opts.atUid)
+          ? await this.client.sendGroupAt(gid, opts.atUid, part)
+          : await this.client.sendGroup(gid, part);
+        if (i === 0) r = res;
+        if (parts.length > 1) this.log('[SENT:' + kind + '] (' + (i + 1) + '/' + parts.length + ') → ' + part);
+        if (i < parts.length - 1) {
+          const lo = Number(splitCfg.delayMs[0]) || 0;
+          const hi = Math.max(lo, Number(splitCfg.delayMs[1]) || lo);
+          await new Promise((ok) => setTimeout(ok, lo + Math.random() * (hi - lo)));
+        }
+      }
     } catch (e) {
       this.log('[ERR:' + kind + '] 发送失败：' + e.message);
       return null;
@@ -1277,7 +1527,7 @@ export class QQEngine {
       this.state.perHour['pro_' + hourKey()] = (this.state.perHour['pro_' + hourKey()] || 0) + 1;
     }
     if (this.aw) this.aw.noteBot(gid);
-    this.log('[SENT:' + kind + '] → ' + clean);
+    if (parts.length <= 1) this.log('[SENT:' + kind + '] → ' + clean);
     return r || {};
   }
 

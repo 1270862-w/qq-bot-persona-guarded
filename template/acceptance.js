@@ -57,6 +57,8 @@ base.proactive = { ...base.proactive, probability: 0 };
 function engine(over = {}, opts = {}) {
   const c = JSON.parse(JSON.stringify(base));
   c.intent = { ...(c.intent || {}), batchSize: 1 };   // 验收逐条判断
+  // 逐条发送会把一句话拆成多条，验收断言数的是"发了几条"，这里强制关掉
+  c.send = { ...(c.send || {}), split: { ...((c.send && c.send.split) || {}), enabled: false } };
   Object.assign(c, over);
   const e = new QQEngine(c, { log: () => {}, cfgDir: HERE, memoryDir: fs.mkdtempSync(path.join(os.tmpdir(), 'acc-mem-')), ...opts });
   e.sent = [];
